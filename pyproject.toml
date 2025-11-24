@@ -1,0 +1,30 @@
+[tool.black]
+line-length = 110
+target-version = ['py312']
+include = '\.py$'
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+force_single_line = true
+
+[tool.poetry]
+name = "energy_monitor"
+version = "0.1.0"
+description = ""
+authors = ["momonala <mnalavadi@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "3.12.*"
+sqlalchemy = "2.*"
+paho-mqtt = "2.*"
+flask = "3.*"
+schedule = "1.*"
+black = "*"
+isort = "*"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
