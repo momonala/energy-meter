@@ -1,8 +1,8 @@
 (() => {
   const chartEl = document.getElementById("chart");
+  const chartLoading = document.getElementById("chart-loading");
   const statusConn = document.getElementById("status-connection");
   const statusPts = document.getElementById("status-points");
-  const statusWindow = document.getElementById("status-window");
   const statusLast = document.getElementById("status-last");
   const statEnergy = document.getElementById("stat-energy");
   const statAvg = document.getElementById("stat-avg");
@@ -24,6 +24,7 @@
   // Secondary summary elements
   const statCurrentConsumption = document.getElementById("stat-current-consumption");
   const statCostRange = document.getElementById("stat-cost-range");
+  const statTotalCost = document.getElementById("stat-total-cost");
   const statMonthEnergy = document.getElementById("stat-month-energy");
   const statMonthCost = document.getElementById("stat-month-cost");
   const statWeekEnergy = document.getElementById("stat-week-energy");
@@ -31,13 +32,20 @@
   const statDayEnergy = document.getElementById("stat-day-energy");
   const statDayCost = document.getElementById("stat-day-cost");
 
+  // All stat elements for skeleton loading
+  const statElements = [
+    statEnergy, statAvg, statMax, statMin, statCount, statRange, statCostRange,
+    statCurrentConsumption, statTotalCost, statMonthEnergy, statMonthCost,
+    statWeekEnergy, statWeekCost, statDayEnergy, statDayCost
+  ].filter(Boolean);
+  const statusLive = document.getElementById("status-live");
+
   let u = null;
   let xVals = [];
   let yVals = [];
   let eVals = [];
   let costPerKwh = 0.3102;
 
-  let data = []; // [ [timeMs, powerW], ... ]
   let selection = { start: null, end: null };
   const pointerSelect = {
     active: false,
@@ -46,7 +54,30 @@
     startMs: null,
   };
   let pollingMs = 10000;
+  let isLoading = false;
+  let lastDataTimestamp = null; // Track the latest data point we have
+  let isLiveView = true; // Track if user is viewing real-time data
+  const MIN_DRAG_PX = 10; // Minimum pixels to drag before selection applies (prevents tap-to-zoom)
+  const LIVE_THRESHOLD_SEC = 120; // Seconds within latest data to consider "live" view (2 minutes)
 
+  // --------------------------------------------------------------------------
+  // Loading State Helpers
+  // --------------------------------------------------------------------------
+  function showLoading() {
+    isLoading = true;
+    if (chartLoading) chartLoading.classList.remove("hidden");
+    statElements.forEach(el => el.classList.add("skeleton"));
+  }
+
+  function hideLoading() {
+    isLoading = false;
+    if (chartLoading) chartLoading.classList.add("hidden");
+    statElements.forEach(el => el.classList.remove("skeleton"));
+  }
+
+  // --------------------------------------------------------------------------
+  // Formatting Helpers
+  // --------------------------------------------------------------------------
   const dateTimeFmtOpts = {
     year: "numeric",
     month: "short",
@@ -73,13 +104,52 @@
     statusConn.style.color = ok ? "#00c83f" : "#7f1d1d";
   }
 
+  /**
+   * Flash the connection indicator to show new data arrived
+   */
+  function flashLiveIndicator() {
+    if (!statusConn) return;
+    statusConn.classList.add("live");
+    setTimeout(() => statusConn.classList.remove("live"), 1000);
+  }
+
+  /**
+   * Update the live view indicator based on whether the chart's right edge
+   * is near the latest data point (within 2 minutes)
+   */
+  function updateLiveIndicator() {
+    if (!statusLive || !u || !xVals.length) return;
+    const curX = u.scales && u.scales.x ? u.scales.x : null;
+    const curMax = curX && Number.isFinite(curX.max) ? curX.max : null;
+    const latestDataSec = xVals[xVals.length - 1];
+    
+    // Consider "live" if view's right edge is within threshold of latest data
+    isLiveView = curMax !== null && (curMax >= latestDataSec - LIVE_THRESHOLD_SEC);
+    
+    if (isLiveView) {
+      statusLive.classList.remove("hidden");
+    } else {
+      statusLive.classList.add("hidden");
+    }
+  }
+
+  /**
+   * Get chart dimensions from its container
+   */
+  function getChartSize() {
+    const wrapper = chartEl.parentElement;
+    return {
+      width: wrapper?.clientWidth || chartEl.clientWidth || 800,
+      height: wrapper?.clientHeight || 400,
+    };
+  }
+
   function initChart() {
     if (!window.uPlot) {
       console.warn("uPlot not loaded; chart disabled. Fetching will still run.");
       return;
     }
-    const width = chartEl.clientWidth || 800;
-    const height = Math.max(320, Math.floor(window.innerHeight * 0.6));
+    const { width, height } = getChartSize();
     const opts = {
       width,
       height,
@@ -178,6 +248,13 @@
         clearSelection();
       }
     });
+    
+    // Prevent iOS Safari from scrolling page during chart interaction
+    chartEl.addEventListener("touchstart", (e) => {
+      if (e.touches.length === 1) {
+        e.preventDefault();
+      }
+    }, { passive: false });
   }
 
   function renderSelection() {
@@ -191,7 +268,7 @@
     }
   }
 
-  function applySelectionRange(startMs, endMs, label = "range", clampToData = true) {
+  function applySelectionRange(startMs, endMs, clampToData = true) {
     if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return;
     if (clampToData && xVals.length) {
       const minMs = xVals[0] * 1000;
@@ -206,9 +283,10 @@
     if (u) {
       u.setScale("x", { min: startMs / 1000, max: endMs / 1000 });
     }
+    updateLiveIndicator(); // Update immediately when view changes
     renderSelection();
     computeStatsLocal(startMs, endMs);
-    if (statusWindow) statusWindow.textContent = label;
+    updateLiveIndicator();
   }
 
   function clearSelection() {
@@ -220,8 +298,8 @@
     if (statMin) statMin.textContent = "–";
     if (statCount) statCount.textContent = "–";
     renderSelection();
-    if (statusWindow) statusWindow.textContent = "live";
     clearPointerSelectionOverlay();
+    updateLiveIndicator();
   }
 
   function updateChart() {
@@ -229,15 +307,40 @@
       initChart();
       if (!u) return;
     }
+    
     // Preserve current x-scale window across refresh
     const curX = u.scales && u.scales.x ? u.scales.x : null;
     const curMin = curX && Number.isFinite(curX.min) ? curX.min : null;
     const curMax = curX && Number.isFinite(curX.max) ? curX.max : null;
+    
     u.setData([xVals, yVals, eVals]);
-    if (curMin !== null && curMax !== null && curMax > curMin) {
-      u.setScale("x", { min: curMin, max: curMax });
+    
+    if (curMin !== null && curMax !== null && curMax > curMin && xVals.length > 0) {
+      const latestDataSec = xVals[xVals.length - 1];
+      const oldLatestSec = curMax;
+      
+      // If the view's right edge was near the latest data (within threshold),
+      // auto-expand to include new data - user is likely watching "live"
+      const isWatchingLive = (oldLatestSec >= latestDataSec - LIVE_THRESHOLD_SEC);
+      
+      if (isWatchingLive && latestDataSec > oldLatestSec) {
+        // Expand view to include new data, keeping the same time window width
+        const windowWidth = curMax - curMin;
+        const newMax = latestDataSec;
+        const newMin = newMax - windowWidth;
+        u.setScale("x", { min: newMin, max: newMax });
+        
+        // Also update selection end if it was at the edge
+        if (selection.end && Math.abs(selection.end / 1000 - oldLatestSec) < LIVE_THRESHOLD_SEC) {
+          selection.end = latestDataSec * 1000;
+        }
+      } else {
+        // Keep the exact same view
+        u.setScale("x", { min: curMin, max: curMax });
+      }
     }
-    if (statusPts) statusPts.textContent = `${data.length} data points`;
+    
+    if (statusPts) statusPts.textContent = `${xVals.length} data points`;
     // header extras
     const lastIdx = xVals.length - 1;
     if (statusLast && lastIdx >= 0) {
@@ -246,18 +349,36 @@
     if (selection.start && selection.end) {
       computeStatsLocal(selection.start, selection.end);
     }
+    
+    // Update live view indicator
+    updateLiveIndicator();
   }
 
-  async function fetchReadings({ start = null, end = null } = {}) {
+  async function fetchReadings({ start = null, end = null, incremental = false } = {}) {
     const qs = new URLSearchParams();
-    if (start) qs.set("start", String(start));
+    
+    // For incremental updates, only fetch data newer than what we have
+    if (incremental && lastDataTimestamp) {
+      qs.set("start", String(lastDataTimestamp + 1));
+    } else if (start) {
+      qs.set("start", String(start));
+    }
     if (end) qs.set("end", String(end));
+    
     try {
       const res = await fetch(`/api/readings?${qs.toString()}`, { cache: "no-cache" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const rows = await res.json();
+      
+      // No new data
+      if (!rows.length) {
+        setConnection(true);
+        return;
+      }
+      
       // Map primary series from power if present
       let mapped = rows.map((r) => [r.t, r.p]);
+      
       // If all power values are null/undefined, derive power from cumulative energy deltas
       let usedDerived = false;
       if (mapped.length && mapped.every((pt) => pt[1] === null || pt[1] === undefined)) {
@@ -288,14 +409,46 @@
           usedDerived = true;
         }
       }
-      data = mapped;
-      // uPlot expects time scale in seconds
-      xVals = mapped.map((m) => Math.floor(m[0] / 1000));
-      yVals = mapped.map((m) => m[1]);
-      eVals = rows.map((r) => r.e ?? null);
+      
+      const newXVals = mapped.map((m) => Math.floor(m[0] / 1000));
+      const newYVals = mapped.map((m) => m[1]);
+      const newEVals = rows.map((r) => r.e ?? null);
+      
+      if (incremental && xVals.length > 0) {
+        // Append only new data points (avoid duplicates)
+        const lastExistingTime = xVals[xVals.length - 1];
+        let appendIndex = 0;
+        for (let i = 0; i < newXVals.length; i++) {
+          if (newXVals[i] > lastExistingTime) {
+            appendIndex = i;
+            break;
+          }
+          appendIndex = newXVals.length; // No new points
+        }
+        
+        if (appendIndex < newXVals.length) {
+          // Append new data
+          xVals = xVals.concat(newXVals.slice(appendIndex));
+          yVals = yVals.concat(newYVals.slice(appendIndex));
+          eVals = eVals.concat(newEVals.slice(appendIndex));
+          
+          // Flash the connection indicator to show new data arrived
+          flashLiveIndicator();
+        }
+      } else {
+        // Full replacement (initial load or explicit refresh)
+        xVals = newXVals;
+        yVals = newYVals;
+        eVals = newEVals;
+      }
+      
+      // Update last timestamp
+      if (xVals.length > 0) {
+        lastDataTimestamp = xVals[xVals.length - 1] * 1000;
+      }
+      
       updateChart();
       setConnection(true);
-      if (usedDerived && statusWindow) statusWindow.textContent = "derived";
       // ensure monthly/weekly/daily summaries refresh
       updatePeriodSummaries();
     } catch (e) {
@@ -358,7 +511,6 @@
     statMax.textContent = fmt.n(maxP, 0);
     statMin.textContent = fmt.n(minP, 0);
     statCount.textContent = String(count);
-    if (statusWindow) statusWindow.textContent = "range";
   }
 
   function updateHover(idx) {
@@ -390,25 +542,26 @@
     if (secs || parts.length === 0) parts.push(`${secs}s`);
     return parts.join(" ");
   }
-  function selectRelativeRange(durationMs, label) {
+  function selectRelativeRange(durationMs) {
     if (!xVals.length) return;
     const endMs = xVals[xVals.length - 1] * 1000;
     const startMs = Math.max(xVals[0] * 1000, endMs - durationMs);
-    applySelectionRange(startMs, endMs, label);
+    applySelectionRange(startMs, endMs);
   }
 
-  function selectCalendarRange(startMs, endMs, label = "range") {
+  function selectCalendarRange(startMs, endMs) {
     if (!xVals.length) return;
-    applySelectionRange(startMs, endMs, label);
+    applySelectionRange(startMs, endMs);
   }
 
-  function shouldUsePointerSelection(evt) {
+  /**
+   * Check if we should handle this pointer event for selection.
+   * We handle all pointer types (mouse, touch, pen) for consistent cross-device behavior.
+   */
+  function shouldHandlePointer(evt) {
     if (!evt) return false;
-    if (evt.pointerType === "touch" || evt.pointerType === "pen") return true;
-    if (evt.pointerType === "mouse") {
-      return typeof navigator !== "undefined" && navigator.maxTouchPoints > 0;
-    }
-    return false;
+    // Handle all pointer types for consistent iPad/desktop behavior
+    return evt.pointerType === "touch" || evt.pointerType === "pen" || evt.pointerType === "mouse";
   }
 
   function getRelativeXPx(evt) {
@@ -480,15 +633,22 @@
   }
 
   function handlePointerSelectStart(evt) {
-    if (!shouldUsePointerSelection(evt) || !u || !xVals.length) return;
+    if (!shouldHandlePointer(evt) || !u || !xVals.length) return;
+    
+    // For touch, we want to prevent scrolling and other default behaviors
+    evt.preventDefault();
+    
     const px = getRelativeXPx(evt);
     if (px == null) return;
     const startMs = pxToMs(px);
     if (!Number.isFinite(startMs)) return;
+    
     pointerSelect.active = true;
     pointerSelect.pointerId = evt.pointerId;
     pointerSelect.startPx = px;
     pointerSelect.startMs = startMs;
+    
+    // Capture pointer to receive events even if finger moves outside element
     if (u.over.setPointerCapture) {
       try {
         u.over.setPointerCapture(evt.pointerId);
@@ -498,23 +658,34 @@
     }
     updateHoverAtPx(px);
     renderPointerSelection(px);
-    evt.preventDefault();
-    if (statusWindow) statusWindow.textContent = "selecting";
   }
 
   function handlePointerSelectMove(evt) {
-    if (!pointerSelect.active || evt.pointerId !== pointerSelect.pointerId || !shouldUsePointerSelection(evt)) return;
+    if (!pointerSelect.active || evt.pointerId !== pointerSelect.pointerId) return;
+    evt.preventDefault();
+    
     const px = getRelativeXPx(evt);
     if (px == null) return;
     updateHoverAtPx(px);
     renderPointerSelection(px);
-    evt.preventDefault();
   }
 
   function finalizePointerSelection(px) {
+    const startPx = pointerSelect.startPx;
     const startMs = pointerSelect.startMs;
-    const endMs = pxToMs(px != null ? px : pointerSelect.startPx);
+    const endPx = px != null ? px : startPx;
+    const endMs = pxToMs(endPx);
     resetPointerSelectionState();
+    
+    // Require minimum drag distance to prevent accidental tap-to-zoom on touch devices
+    const dragDistance = Math.abs(endPx - startPx);
+    if (dragDistance < MIN_DRAG_PX) {
+      return; // Ignore taps and tiny drags
+    }
+    
+    // Clear active button since user made a custom selection
+    setActiveButton(null);
+    
     if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return;
     const from = Math.min(startMs, endMs);
     let to = Math.max(startMs, endMs);
@@ -525,10 +696,11 @@
   }
 
   function handlePointerSelectEnd(evt) {
-    if (!pointerSelect.active || evt.pointerId !== pointerSelect.pointerId || !shouldUsePointerSelection(evt)) return;
+    if (!pointerSelect.active || evt.pointerId !== pointerSelect.pointerId) return;
+    evt.preventDefault();
+    
     const px = getRelativeXPx(evt);
     finalizePointerSelection(px);
-    evt.preventDefault();
   }
 
   function cancelPointerSelection(evt) {
@@ -537,10 +709,22 @@
     resetPointerSelectionState();
   }
 
+  // Time range buttons for active state tracking
+  const timeRangeButtons = [btnLastHour, btnLastDay, btnLastWeek, btnLastMonth, btnLastYear].filter(Boolean);
+
+  /**
+   * Set the active time range button and clear others
+   */
+  function setActiveButton(activeBtn) {
+    timeRangeButtons.forEach(btn => btn.classList.remove("active"));
+    if (activeBtn) activeBtn.classList.add("active");
+  }
+
   btnReset.addEventListener("click", () => {
     if (u && xVals.length) {
       u.setScale("x", { min: xVals[0], max: xVals[xVals.length - 1] });
     }
+    setActiveButton(null); // Clear active state on reset
     clearSelection();
   });
   if (btnRefresh) {
@@ -559,49 +743,103 @@
       }
     });
   }
-  if (btnLastHour) btnLastHour.addEventListener("click", () => selectRelativeRange(60 * 60 * 1000, "last hour"));
-  if (btnLastDay) btnLastDay.addEventListener("click", () => selectRelativeRange(24 * 60 * 60 * 1000, "last day"));
+  if (btnLastHour) btnLastHour.addEventListener("click", () => {
+    setActiveButton(btnLastHour);
+    selectRelativeRange(60 * 60 * 1000);
+  });
+  if (btnLastDay) btnLastDay.addEventListener("click", () => {
+    setActiveButton(btnLastDay);
+    selectRelativeRange(24 * 60 * 60 * 1000);
+  });
   if (btnLastWeek) btnLastWeek.addEventListener("click", () => {
+    setActiveButton(btnLastWeek);
     const now = new Date();
     const day = now.getDay(); // 0 Sunday .. 6 Saturday
     const start = new Date(now);
     start.setHours(0,0,0,0);
     start.setDate(start.getDate() - day); // week starting Sunday
-    selectCalendarRange(start.getTime(), now.getTime(), "last week");
+    selectCalendarRange(start.getTime(), now.getTime());
   });
   if (btnLastMonth) btnLastMonth.addEventListener("click", () => {
+    setActiveButton(btnLastMonth);
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds(), 0);
-    selectCalendarRange(start.getTime(), now.getTime(), "last month");
+    selectCalendarRange(start.getTime(), now.getTime());
   });
   if (btnLastYear) btnLastYear.addEventListener("click", () => {
+    setActiveButton(btnLastYear);
     const now = new Date();
     const start = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds(), 0);
-    selectCalendarRange(start.getTime(), now.getTime(), "last year");
+    selectCalendarRange(start.getTime(), now.getTime());
   });
 
   async function poll() {
-    await fetchReadings();
+    // Use incremental update for polling (only fetch new data)
+    await fetchReadings({ incremental: true });
     setTimeout(poll, pollingMs);
   }
 
   window.addEventListener("resize", () => {
     if (u) {
-      const width = chartEl.clientWidth || 800;
-      const height = Math.max(320, Math.floor(window.innerHeight * 0.6));
+      const { width, height } = getChartSize();
       u.setSize({ width, height });
     }
   });
 
+  // --------------------------------------------------------------------------
+  // Keyboard Shortcuts
+  // --------------------------------------------------------------------------
+  document.addEventListener("keydown", (e) => {
+    // Ignore if user is typing in an input
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    
+    switch (e.key.toLowerCase()) {
+      case "r":
+        e.preventDefault();
+        btnRefresh?.click();
+        break;
+      case "escape":
+        e.preventDefault();
+        btnReset?.click();
+        break;
+      case "1":
+        e.preventDefault();
+        btnLastHour?.click();
+        break;
+      case "2":
+        e.preventDefault();
+        btnLastDay?.click();
+        break;
+      case "3":
+        e.preventDefault();
+        btnLastWeek?.click();
+        break;
+      case "4":
+        e.preventDefault();
+        btnLastMonth?.click();
+        break;
+      case "5":
+        e.preventDefault();
+        btnLastYear?.click();
+        break;
+    }
+  });
+
+  // --------------------------------------------------------------------------
+  // Initialization
+  // --------------------------------------------------------------------------
+  showLoading();
   initChart();
   fetchReadings()
     .then(() => {
+      hideLoading();
       loadCostFromStorage();
       updatePeriodSummaries();
       poll();
     })
     .catch((e) => {
       console.error("Initial fetch failed:", e);
+      hideLoading();
       setTimeout(poll, pollingMs);
     });
  
@@ -652,6 +890,7 @@ async function updatePeriodSummaries() {
     if (statMonthEnergy) statMonthEnergy.textContent = fmt.n(monthStats.energy_used_kwh, 3);
     if (statMonthCost) statMonthCost.textContent = fmt.n((monthStats.energy_used_kwh || 0) * costPerKwh, 2);
     if (statCurrentConsumption) statCurrentConsumption.textContent = fmt.n(latestReading.energy_in_kwh, 3);
+    if (statTotalCost) statTotalCost.textContent = fmt.n((latestReading.energy_in_kwh || 0) * costPerKwh, 2);
     
   } catch (e) {
     console.error("Failed to update period summaries:", e);

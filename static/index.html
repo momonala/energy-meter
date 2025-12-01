@@ -20,6 +20,7 @@
       </div>
       <div class="status">
         <span id="status-connection" class="status-pill">Connecting...</span>
+        <span id="status-live" class="status-pill live-badge hidden">● LIVE</span>
         <span id="status-points" class="status-pill">0 data points</span>
         <span id="status-last" class="status-pill">Last updated –</span>
       </div>
@@ -27,89 +28,97 @@
 
     <main class="app-main">
       <div class="chart-layout">
-        <section class="chart-card">
+        <section class="chart-card card">
           <div class="chart-wrapper">
-            <div id="chart" class="chart"></div>
+            <div id="chart"></div>
+            <div id="chart-loading" class="chart-loading">Loading chart...</div>
             <div id="hover-overlay" class="hover-overlay">
               <div class="hover-row"><span id="hover-time">–</span></div>
-              <div class="hover-row"><span id="hover-total-energy"></span><span style="color: rgb(235, 133, 37);">kWh</span></div>
-              <div class="hover-row"><span id="hover-power"></span><span style="color: rgba(37, 99, 235, 1);">W</span></div>
+              <div class="hover-row"><span id="hover-total-energy"></span><span class="text-energy">kWh</span></div>
+              <div class="hover-row"><span id="hover-power"></span><span class="text-power">W</span></div>
             </div>
           </div>
           <div class="toolbar">
-            <button id="btn-refresh" class="btn">Refresh data</button>
-            <button id="btn-reset" class="btn">Reset selection</button>
-            <button id="btn-last-year" class="btn">Last year</button>
-            <button id="btn-last-month" class="btn">Last month</button>
-            <button id="btn-last-week" class="btn">Last week</button>
-            <button id="btn-last-day" class="btn">Last day</button>
-            <button id="btn-last-hour" class="btn">Last hour</button>
+            <button id="btn-refresh" class="btn">Refresh</button>
+            <button id="btn-reset" class="btn">Reset</button>
+            <button id="btn-last-year" class="btn">Year</button>
+            <button id="btn-last-month" class="btn">Month</button>
+            <button id="btn-last-week" class="btn">Week</button>
+            <button id="btn-last-day" class="btn">Day</button>
+            <button id="btn-last-hour" class="btn">Hour</button>
           </div>
         </section>
 
-        <aside class="stats-card">
-          <div class="stats-grid single-col">
-            <div class="stat stat-input">
+        <aside class="stats-card card">
+          <div class="stats-title">Selection Stats</div>
+          <div class="stats-grid">
+            <div class="stat">
               <div class="label">Cost €/kWh</div>
               <div class="value">
-                <input id="cost-input" type="text"value="0.3102" />
+                <input id="cost-input" type="text" value="0.3102" />
               </div>
             </div>
             <div class="stat">
-              <div class="label">Energy consumed </div>
-              <div class="value"><span style="color: rgb(235, 133, 37);"><span id="stat-energy">–</span> kWh</span></div>
+              <div class="label">Energy</div>
+              <div class="value"><span class="text-energy"><span id="stat-energy">–</span> kWh</span></div>
             </div>
             <div class="stat">
-              <div class="label">Cost </div>
-              <div class="value"><span style="color: rgba(255, 255, 255, 1);">€<span id="stat-cost-range">–</span></span></div>
+              <div class="label">Cost</div>
+              <div class="value">€<span id="stat-cost-range">–</span></div>
             </div>
             <div class="stat">
               <div class="label">Max Power</div>
-              <div class="value"><span style="color: rgba(37, 99, 235, 1);"><span id="stat-max">–</span> W</span></div>
+              <div class="value"><span class="text-power"><span id="stat-max">–</span> W</span></div>
             </div>
             <div class="stat">
               <div class="label">Min Power</div>
-              <div class="value"><span style="color: rgba(37, 99, 235, 1);"><span id="stat-min">–</span> W</span></div>
+              <div class="value"><span class="text-power"><span id="stat-min">–</span> W</span></div>
             </div>
             <div class="stat">
               <div class="label">Avg Power</div>
-              <div class="value"><span style="color: rgba(37, 99, 235, 1);"><span id="stat-avg">–</span> W</span></div>
+              <div class="value"><span class="text-power"><span id="stat-avg">–</span> W</span></div>
             </div>
             <div class="stat">
-              <div class="label">Data Points </div>
+              <div class="label">Data Points</div>
               <div class="value"><span id="stat-count">–</span></div>
             </div>
             <div class="stat">
-              <div class="label">Selected Range</div>
-              <div class="value"><span id="stat-range"></span></div>
+              <div class="label">Range</div>
+              <div class="value"><span id="stat-range">–</span></div>
             </div>
           </div>
         </aside>
-        <aside class="stats-card stats-card-secondary">
-          <div class="stats-grid single-col">
+
+        <aside class="stats-card card">
+          <div class="stats-title">Period Summary</div>
+          <div class="stats-grid">
             <div class="stat">
-              <div class="label">Total Consumption</div>
+              <div class="label">Total</div>
               <div class="value">
-                <span style="color: rgb(235, 133, 37);"><span id="stat-current-consumption">–</span> kWh</span><br>
-                <span style="color: rgba(255, 255, 255, 1);">€<span id="stat-cost-range">–</span></span></div>
+                <div class="text-energy"><span id="stat-current-consumption">–</span> kWh</div>
+                <div>€<span id="stat-total-cost">–</span></div>
+              </div>
             </div>
             <div class="stat">
               <div class="label">This Month</div>
               <div class="value">
-                <span style="color: rgb(235, 133, 37);"><span id="stat-month-energy">–</span> kWh</span><br>
-                <span style="color: rgba(255, 255, 255, 1);">€<span id="stat-month-cost">–</span></span></div>
+                <div class="text-energy"><span id="stat-month-energy">–</span> kWh</div>
+                <div>€<span id="stat-month-cost">–</span></div>
+              </div>
             </div>
             <div class="stat">
               <div class="label">This Week</div>
               <div class="value">
-                <span style="color: rgb(235, 133, 37);"><span id="stat-week-energy">–</span> kWh</span><br>
-                <span style="color: rgba(255, 255, 255, 1);">€<span id="stat-week-cost">–</span></span></div>
+                <div class="text-energy"><span id="stat-week-energy">–</span> kWh</div>
+                <div>€<span id="stat-week-cost">–</span></div>
+              </div>
             </div>
             <div class="stat">
               <div class="label">Today</div>
               <div class="value">
-                <span style="color: rgb(235, 133, 37);"><span id="stat-day-energy">–</span> kWh</span><br>
-                <span style="color: rgba(255, 255, 255, 1);">€<span id="stat-day-cost">–</span></span></div>
+                <div class="text-energy"><span id="stat-day-energy">–</span> kWh</div>
+                <div>€<span id="stat-day-cost">–</span></div>
+              </div>
             </div>
           </div>
         </aside>
@@ -118,6 +127,4 @@
 
     <script src="/static/app.js"></script>
   </body>
-  </html>
-
-
+</html>
