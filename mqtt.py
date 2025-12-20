@@ -7,11 +7,11 @@ import time
 
 import paho.mqtt.client as mqtt
 
+from config import MQTT_PORT
+from config import SERVER_URL
+from config import TOPIC
 from database import init_db
 from database import save_energy_reading
-from values import MQTT_PORT
-from values import SERVER_URL
-from values import TOPIC
 
 logger = logging.getLogger(__name__)
 

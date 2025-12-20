@@ -6,6 +6,11 @@ from flask import Flask
 from flask import jsonify
 from flask import request
 
+from config import FLASK_PORT
+from config import MQTT_PORT
+from config import SERVER_URL
+from config import TASMOTA_UI_URL
+from config import TOPIC
 from database import get_avg_daily_energy_usage
 from database import get_readings
 from database import get_stats
@@ -18,11 +23,6 @@ from mqtt import get_mqtt_client
 from mqtt import mqtt_loop
 from scheduler import get_scheduled_jobs
 from scheduler import schedule_loop
-from values import FLASK_PORT
-from values import MQTT_PORT
-from values import SERVER_URL
-from values import TASMOTA_UI_URL
-from values import TOPIC
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

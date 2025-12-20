@@ -58,7 +58,7 @@ flowchart LR
    python database.py
    ```
 
-3. Configure `values.py`:
+3. Configure `config.py`:
    ```python
    DATABASE_URL = "sqlite:///data/energy.db"  # default
    SERVER_URL = "192.168.x.x"                 # MQTT broker IP (MUST CHANGE)
@@ -66,6 +66,12 @@ flowchart LR
    FLASK_PORT = 5008                          # web server port
    TOPIC = "tele/tasmota/#"                   # MQTT topic pattern
    TASMOTA_UI_URL = "http://192.168.x.x/"     # Tasmota device IP (optional)
+  ```
+
+4. Configure `values.py`:
+  ```python 
+   TELEGRAM_API_TOKEN
+   TELEGRAM_CHAT_ID
    ```
 
 ## Running

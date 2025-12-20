@@ -1277,3 +1277,4 @@ async function fetchAvgDailyEnergyUsage() {
 
 })();
 
+

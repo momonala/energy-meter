@@ -1,0 +1,26 @@
+import logging
+
+import requests
+
+from values import TELEGRAM_API_TOKEN
+from values import TELEGRAM_CHAT_ID
+
+
+def report_missing_data_to_telegram() -> None:
+    """Send an error message to a Telegram chat."""
+
+    # Truncate full_status if too long - keep the END since errors are usually there
+    message = f"""⚠️⚡️*ENERGY MONITOR:*⚡️⚠️ {message}"""
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message,
+        "parse_mode": "Markdown",
+    }
+
+    try:
+        response = requests.post(url, data=payload)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        logging.error("Failed to send message to Telegram: %s", exc)

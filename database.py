@@ -16,8 +16,9 @@ from sqlalchemy import func
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 
+from config import DATABASE_URL
 from helpers import local_timezone
-from values import DATABASE_URL
+from telegram import report_missing_data_to_telegram
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +127,8 @@ def num_total_energy_readings() -> int:
 def log_db_health_check():
     """Log the number of records in the DB as a health check."""
     num_readings_last_hour = num_energy_readings_last_hour()
+    if num_readings_last_hour < 300:
+        report_missing_data_to_telegram(f"Only {num_readings_last_hour} readings in the last hour")
     num_total_readings = num_total_energy_readings()
     logger.info(f"[log_db_health_check] {num_readings_last_hour=} {num_total_readings=}")
 
